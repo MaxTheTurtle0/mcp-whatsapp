@@ -49,6 +49,7 @@ var readOnlyToolAccess = map[string]bool{
 	"transcribe_audio":          false,
 	"unblock_contact":           false,
 	"update_group_participants": false,
+	"wait_for_messages":         true,
 }
 
 // registerTools wires every MCP tool to the bound WhatsApp client.
@@ -65,6 +66,7 @@ var readOnlyToolAccess = map[string]bool{
 // maybeMarkChatRead). Common result helpers live in result.go.
 func (s *Server) registerTools() {
 	s.registerQueryTools()
+	s.registerWaitForMessages()
 	s.registerSendTools()
 	s.registerMessageTools()
 

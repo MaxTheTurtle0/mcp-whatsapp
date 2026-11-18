@@ -62,6 +62,7 @@ var expectedToolNames = []string{
 	"transcribe_audio",
 	"unblock_contact",
 	"update_group_participants",
+	"wait_for_messages",
 }
 
 func TestNewServer_RegistersAllTools(t *testing.T) {
@@ -127,7 +128,7 @@ func TestNewServer_RegistersAllTools(t *testing.T) {
 
 func TestNewServer_ToolCount(t *testing.T) {
 	s := NewServer(nil, nil, true)
-	const want = 47
+	const want = 48
 	if got := len(s.MCP().ListTools()); got != want {
 		t.Errorf("tool count = %d, want %d", got, want)
 	}
@@ -140,8 +141,8 @@ func TestNewServer_LabelsDisabledDoesNotAdvertiseLabelTools(t *testing.T) {
 			t.Errorf("label tool %q is advertised while labels are disabled", name)
 		}
 	}
-	if got := len(s.MCP().ListTools()); got != 43 {
-		t.Fatalf("default tool count = %d, want 43", got)
+	if got := len(s.MCP().ListTools()); got != 44 {
+		t.Fatalf("default tool count = %d, want 44", got)
 	}
 }
 
@@ -197,6 +198,7 @@ var expectedReadOnlyTools = map[string]bool{
 	"request_sync":         true,
 	"resync_labels":        true,
 	"search_contacts":      true,
+	"wait_for_messages":    true,
 }
 
 func TestReadOnlyServer_RejectsMutationTools(t *testing.T) {
@@ -270,5 +272,19 @@ func TestReadOnlyServer_InstructionsReportMode(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), "read-only") {
 		t.Fatalf("initialize does not report the mode: %s", raw)
+	}
+}
+
+func TestRestrictTools(t *testing.T) {
+	s := NewServer(nil, nil, false)
+	if err := s.RestrictTools([]string{"wait_for_messages", "send_message"}); err != nil {
+		t.Fatal(err)
+	}
+	got := s.MCP().ListTools()
+	if len(got) != 2 || got["wait_for_messages"] == nil || got["send_message"] == nil {
+		t.Fatalf("restricted tools = %v", len(got))
+	}
+	if err := NewServer(nil, nil, false).RestrictTools([]string{"send_mesage"}); err == nil {
+		t.Fatal("typo in allowlist was accepted")
 	}
 }

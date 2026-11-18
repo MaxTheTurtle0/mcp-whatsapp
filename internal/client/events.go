@@ -213,6 +213,10 @@ func (c *Client) handleMessage(msg *events.Message) {
 	if pollOptions != nil {
 		c.replayPendingPollVotes([]string{msg.Info.Chat.String()})
 	}
+	// Live arrivals feed wait_for_messages; history sync never does.
+	if err := c.store.AppendInbox(ctx, nm.msg.ID, nm.msg.ChatJID); err != nil {
+		c.log.Warnf("Failed to record message in inbox: %s", c.redactor.Err(err))
+	}
 
 	direction := "<-"
 	if msg.Info.IsFromMe {

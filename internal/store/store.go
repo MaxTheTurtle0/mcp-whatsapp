@@ -94,6 +94,7 @@ type Store struct {
 	db          *sql.DB
 	whatsmeowDB *sql.DB
 	dir         string
+	inbox       inboxSignal
 }
 
 // Open creates (if necessary) the store directory and opens both databases.
@@ -129,6 +130,10 @@ func Open(dir string) (*Store, error) {
 	if _, err := db.Exec(transcriptsSchema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("apply transcripts schema: %w", err)
+	}
+	if err := applyInboxSchema(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("apply inbox schema: %w", err)
 	}
 	// Tighten messages.db after schema has been applied (the file exists
 	// by then). IsNotExist-tolerate in case a future sqlite driver version

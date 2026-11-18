@@ -3,6 +3,7 @@
 package mcp
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -67,6 +68,25 @@ func newServer(c *client.Client, cache pairingCache, readOnly, labelsEnabled boo
 	}
 	s.registerResources()
 	return s
+}
+
+// RestrictTools keeps only the named tools, so clients see a small tool list.
+// Unknown names are an error, so a typo cannot silently hide a tool.
+func (s *Server) RestrictTools(names []string) error {
+	keep := map[string]bool{}
+	registered := s.mcp.ListTools()
+	for _, n := range names {
+		if _, ok := registered[n]; !ok {
+			return fmt.Errorf("unknown or unavailable tool %q", n)
+		}
+		keep[n] = true
+	}
+	for name := range registered {
+		if !keep[name] {
+			s.mcp.DeleteTools(name)
+		}
+	}
+	return nil
 }
 
 // MCP returns the underlying mcp-go server (tests only).

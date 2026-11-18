@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/sealjay/mcp-whatsapp/internal/client"
@@ -149,6 +150,21 @@ func runServe(storeDir string, redactor *security.Redactor, args []string) int {
 	}
 	if labelsEnabled {
 		fmt.Fprintln(os.Stderr, "WhatsApp Business label sync and tools are enabled")
+	}
+	// WHATSAPP_MCP_TOOLS: comma-separated allowlist that trims the advertised
+	// tool list (fewer tools keep client models focused). Unset = all tools.
+	if list := strings.TrimSpace(os.Getenv("WHATSAPP_MCP_TOOLS")); list != "" {
+		var names []string
+		for _, n := range strings.Split(list, ",") {
+			if n = strings.TrimSpace(n); n != "" {
+				names = append(names, n)
+			}
+		}
+		if err := mcpServer.RestrictTools(names); err != nil {
+			fmt.Fprintf(os.Stderr, "WHATSAPP_MCP_TOOLS: %v\n", err)
+			return 2
+		}
+		fmt.Fprintf(os.Stderr, "tool allowlist active: %d tools\n", len(names))
 	}
 	d.SetMCPMount(mcpServer.AttachHTTP)
 
