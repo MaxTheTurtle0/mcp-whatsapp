@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/sealjay/mcp-whatsapp/internal/client"
@@ -80,6 +81,7 @@ func runServe(storeDir string, redactor *security.Redactor, args []string) int {
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	var restartAfterPair atomic.Bool
 
 	lock, err := store.TryLock(storeDir)
 	if err != nil {
@@ -135,6 +137,11 @@ func runServe(storeDir string, redactor *security.Redactor, args []string) int {
 		Addr:      addr,
 		Driver:    drv,
 		AuthToken: authToken,
+		OnPairSuccess: func() {
+			fmt.Fprintln(os.Stderr, "paired: exiting with status 3 so the service manager restarts serve with the new session")
+			restartAfterPair.Store(true)
+			cancel()
+		},
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "daemon.New: %v\n", err)
@@ -175,6 +182,9 @@ func runServe(storeDir string, redactor *security.Redactor, args []string) int {
 	if err := d.Run(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintf(os.Stderr, "daemon: %v\n", err)
 		return 1
+	}
+	if restartAfterPair.Load() {
+		return 3
 	}
 	return 0
 }

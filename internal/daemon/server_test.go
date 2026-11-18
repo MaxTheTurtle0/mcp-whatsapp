@@ -230,3 +230,25 @@ func TestServer_LogoutErrorFromReset(t *testing.T) {
 		t.Fatal("expected logout error to surface")
 	}
 }
+
+// Upstream #127: after a /pair success the main client must not be connected
+// in-process; OnPairSuccess (serve restarts the process) runs instead.
+func TestServer_OnPairSuccessReplacesInProcessConnect(t *testing.T) {
+	drv := newFakePairDriver(false)
+	var called atomic.Int32
+	s, err := New(Config{Addr: "127.0.0.1:0", Driver: drv, OnPairSuccess: func() { called.Add(1) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = s.Run(ctx) }()
+	waitFor(t, func() bool { return drv.starts.Load() == 1 }, "pairing started")
+
+	drv.pairCh <- struct{}{}
+	waitFor(t, func() bool { return called.Load() == 1 }, "OnPairSuccess called")
+	time.Sleep(50 * time.Millisecond)
+	if n := drv.connects.Load(); n != 0 {
+		t.Fatalf("main client connected in-process %d times", n)
+	}
+}

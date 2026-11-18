@@ -45,6 +45,13 @@ type Config struct {
 	Driver    pairDriver
 	MCPMount  func(mux *http.ServeMux)
 	AuthToken string
+	// OnPairSuccess, if set, replaces connecting the main client after a
+	// pairing session succeeds. The main client was created on the empty
+	// store, so whatsmeow ignores its login ("connect success without
+	// pairing") and WhatsApp removes the device a minute later (upstream
+	// issue #127). serve uses this to restart the process instead, so a
+	// fresh client loads the new session.
+	OnPairSuccess func()
 }
 
 // Server is the long-lived daemon process. Safe for a single Run call.
@@ -184,6 +191,10 @@ func writeProbe(w http.ResponseWriter, code int, key string, value bool) {
 // or connects with the existing session. Safe to call only once per Run.
 func (s *Server) bootDriver(ctx context.Context) error {
 	onPairSuccess := func() {
+		if s.cfg.OnPairSuccess != nil {
+			s.cfg.OnPairSuccess()
+			return
+		}
 		// Transition into Connect to install the LoggedOut handler.
 		_ = s.cfg.Driver.Connect(ctx, s.onLoggedOut())
 	}
