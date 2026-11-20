@@ -34,9 +34,9 @@ type sendMessageArgs struct {
 
 func (s *Server) registerSendMessage() {
 	tool := mcp.NewTool("send_message",
-		mcp.WithDescription("Send a new WhatsApp text message to a person or group; recipients see it as a fresh message from the paired account and the row is also stored in the local cache. Reversible via delete_message (revoke) or edit_message (correct text); to quote a previous message use send_reply, for emoji acknowledgement use send_reaction. Returns a JSON object `{Success, Message, ID}` where `ID` is the WhatsApp message ID on success."),
+		mcp.WithDescription("Send a new WhatsApp text message to a person or group; recipients see it as a fresh message from the paired account and the row is also stored in the local cache. To tag (@-mention) someone so they get notified, write `@` followed by their phone number in international format, digits only, where the tag belongs, e.g. `Thanks @491701234567!`; WhatsApp shows their name instead of the digits. A sender_phone or sender_jid user part from wait_for_messages/list_messages works. `@Name` is plain text and does not notify anyone. Reversible via delete_message (revoke) or edit_message (correct text); to quote a previous message use send_reply, for emoji acknowledgement use send_reaction. Returns a JSON object `{Success, Message, ID}` where `ID` is the WhatsApp message ID on success."),
 		mcp.WithString("recipient", mcp.Required(), mcp.Description(recipientDesc)),
-		mcp.WithString("message", mcp.Required(), mcp.Description("message body text")),
+		mcp.WithString("message", mcp.Required(), mcp.Description("message body text; `@<phone digits>` becomes a real mention")),
 		mcp.WithBoolean("mark_chat_read", mcp.DefaultBool(false), mcp.Description("if true, also ack recent incoming messages in the chat to clear the unread badge (defaults to false)")),
 		mcp.WithReadOnlyHintAnnotation(false),
 		mcp.WithDestructiveHintAnnotation(false),
@@ -58,7 +58,9 @@ func (s *Server) registerSendMessage() {
 
 type sendFileArgs struct {
 	Recipient    string `json:"recipient"`
-	MediaPath    string `json:"media_path"`
+	MediaPath    string `json:"media_path,omitempty"`
+	MediaURL     string `json:"media_url,omitempty"`
+	Filename     string `json:"filename,omitempty"`
 	Caption      string `json:"caption,omitempty"`
 	MarkChatRead bool   `json:"mark_chat_read,omitempty"`
 	ViewOnce     bool   `json:"view_once,omitempty"`
@@ -66,9 +68,11 @@ type sendFileArgs struct {
 
 func (s *Server) registerSendFile() {
 	tool := mcp.NewTool("send_file",
-		mcp.WithDescription("Upload and send a picture, video, document, or raw audio attachment via WhatsApp; the recipient sees a media message and the outgoing row is persisted to the local cache. Reversible via delete_message (revoke). For voice notes use send_audio_message (which transcodes to ogg/opus); for plain text use send_message. Returns a JSON object `{Success, Message, ID}` where `ID` is the WhatsApp message ID on success."),
+		mcp.WithDescription("Send a picture, video, document, or raw audio attachment via WhatsApp. Pass `media_url` (a public http(s) link the server downloads, up to 100 MB) or `media_path` (a file already on the server). The type follows the file extension or Content-Type: jpg/png/gif/webp send as photos, mp4/mov as videos, anything else as a document. The caption supports @-mentions like send_message. Reversible via delete_message (revoke). For voice notes use send_audio_message (which transcodes to ogg/opus); for plain text use send_message. Returns a JSON object `{Success, Message, ID}` where `ID` is the WhatsApp message ID on success."),
 		mcp.WithString("recipient", mcp.Required(), mcp.Description(recipientDesc)),
-		mcp.WithString("media_path", mcp.Required(), mcp.Description("absolute path to the media file; must sit under the configured media root (`WHATSAPP_MCP_MEDIA_ROOT`, default `<store>/uploads/`)")),
+		mcp.WithString("media_url", mcp.Description("public http(s) URL of the file to send; use this unless the file is already on the server")),
+		mcp.WithString("media_path", mcp.Description("absolute path to a file on the server under the media root (`WHATSAPP_MCP_MEDIA_ROOT`); alternative to media_url")),
+		mcp.WithString("filename", mcp.Description("optional file name shown for documents (e.g. `report.pdf`); with media_url it also decides the type when the URL has no extension")),
 		mcp.WithString("caption", mcp.Description("optional caption for image/video/document submessages; ignored for raw audio")),
 		mcp.WithBoolean("mark_chat_read", mcp.DefaultBool(false), mcp.Description("if true, also ack recent incoming messages in the chat to clear the unread badge (defaults to false)")),
 		mcp.WithBoolean("view_once", mcp.DefaultBool(false), mcp.Description("if true, mark image/video/audio submessages as view-once; silently ignored for documents (defaults to false)")),
@@ -78,10 +82,22 @@ func (s *Server) registerSendFile() {
 		mcp.WithOpenWorldHintAnnotation(true),
 	)
 	s.mcp.AddTool(tool, mcp.NewTypedToolHandler(func(ctx context.Context, req mcp.CallToolRequest, a sendFileArgs) (*mcp.CallToolResult, error) {
-		if a.Recipient == "" || a.MediaPath == "" {
-			return mcp.NewToolResultError("recipient and media_path are required"), nil
+		if a.Recipient == "" {
+			return mcp.NewToolResultError("recipient is required"), nil
 		}
-		safePath, err := s.client.ValidateMediaPath(a.MediaPath)
+		if (a.MediaPath == "") == (a.MediaURL == "") {
+			return mcp.NewToolResultError("pass exactly one of media_url or media_path"), nil
+		}
+		mediaPath := a.MediaPath
+		if a.MediaURL != "" {
+			p, cleanup, err := s.fetcher.Fetch(ctx, a.MediaURL, s.client.MediaRoot(), a.Filename)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			defer cleanup()
+			mediaPath = p
+		}
+		safePath, err := s.client.ValidateMediaPath(mediaPath)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
@@ -191,7 +207,7 @@ func (s *Server) registerSendReply() {
 		mcp.WithString("chat_jid", mcp.Required(), mcp.Description(jidDesc)),
 		mcp.WithString("target_message_id", mcp.Required(), mcp.Description("WhatsApp message ID of the message being quoted (use `message_id` from list_messages)")),
 		mcp.WithString("target_sender_jid", mcp.Description("JID of the quoted message's original sender; required in group chats, omit in 1:1 chats ("+jidDesc+")")),
-		mcp.WithString("body", mcp.Required(), mcp.Description("reply text body")),
+		mcp.WithString("body", mcp.Required(), mcp.Description("reply text body; tag people with `@<phone digits>` as in send_message")),
 		mcp.WithReadOnlyHintAnnotation(false),
 		mcp.WithDestructiveHintAnnotation(false),
 		mcp.WithIdempotentHintAnnotation(false),

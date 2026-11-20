@@ -134,8 +134,10 @@ func (c *Client) SendReply(ctx context.Context, chatJID, targetMessageID, target
 		participant = sender.ToNonAD().String()
 	}
 
+	body, mentioned := c.applyMentions(ctx, chat, body)
 	ctxInfo := &waProto.ContextInfo{
-		StanzaID: proto.String(targetMessageID),
+		StanzaID:     proto.String(targetMessageID),
+		MentionedJID: mentioned,
 	}
 	if participant != "" {
 		ctxInfo.Participant = proto.String(participant)

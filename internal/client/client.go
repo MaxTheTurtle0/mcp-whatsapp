@@ -203,6 +203,9 @@ func (c *Client) ValidateMediaPath(userPath string) (string, error) {
 	return security.ValidateMediaPath(userPath, c.allowedMediaRoot)
 }
 
+// MediaRoot is the directory outbound media must live under.
+func (c *Client) MediaRoot() string { return c.allowedMediaRoot }
+
 // ValidateOutputPath is the sister wrapper for paths the daemon is about to
 // *write* to (e.g. download_media's output_path). Parent dir must exist; the
 // final file does not.

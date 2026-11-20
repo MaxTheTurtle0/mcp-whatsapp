@@ -9,6 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/sealjay/mcp-whatsapp/internal/client"
+	"github.com/sealjay/mcp-whatsapp/internal/media"
 )
 
 // pairingCache is the minimal pairing-state surface pairing_status needs.
@@ -28,6 +29,7 @@ type Server struct {
 	cache         pairingCache
 	readOnly      bool
 	labelsEnabled bool
+	fetcher       media.Fetcher
 }
 
 // NewServer constructs an MCP server with all tools registered against the

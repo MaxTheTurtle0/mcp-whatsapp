@@ -66,9 +66,17 @@ func (c *Client) send(ctx context.Context, recipient, message, mediaPath string,
 		MessageContextInfo: c.ephemeralContextInfo(ctx, recipientJID),
 	}
 
+	message, mentioned := c.applyMentions(ctx, recipientJID, message)
+
 	if mediaPath != "" {
 		if err := c.attachMedia(ctx, msg, mediaPath, message, viewOnce); err != nil {
 			return SendResult{Success: false, Message: err.Error()}
+		}
+		setMediaMentions(msg, mentioned)
+	} else if len(mentioned) > 0 {
+		msg.ExtendedTextMessage = &waProto.ExtendedTextMessage{
+			Text:        proto.String(message),
+			ContextInfo: &waProto.ContextInfo{MentionedJID: mentioned},
 		}
 	} else {
 		msg.Conversation = proto.String(message)
@@ -268,6 +276,23 @@ func (c *Client) attachMedia(ctx context.Context, msg *waProto.Message, mediaPat
 		}
 	}
 	return nil
+}
+
+// setMediaMentions tags mentioned on the caption of an image, video or
+// document message. Audio has no caption, so it is left alone.
+func setMediaMentions(msg *waProto.Message, mentioned []string) {
+	if len(mentioned) == 0 {
+		return
+	}
+	info := &waProto.ContextInfo{MentionedJID: mentioned}
+	switch {
+	case msg.ImageMessage != nil:
+		msg.ImageMessage.ContextInfo = info
+	case msg.VideoMessage != nil:
+		msg.VideoMessage.ContextInfo = info
+	case msg.DocumentMessage != nil:
+		msg.DocumentMessage.ContextInfo = info
+	}
 }
 
 // mediaTypeFromExt maps a file extension to a whatsmeow MediaType + mime type.
